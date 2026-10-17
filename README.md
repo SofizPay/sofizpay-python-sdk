@@ -263,88 +263,142 @@ if products.get('success'):
 
 ---
 
-## 🏦 Bank Integration (CIB)
+## 🏦 Bank Integration (CIB & EDAHABIA)
 
-Generate secure Dahabia/CIB bank payment links.
+Generate secure Dahabia/CIB bank payment links with optional real-time webhook callbacks.
 
 ```python
 result = await client.make_cib_transaction({
-    'account':    'YOUR_STELLAR_PUBLIC_KEY',    # Your merchant Stellar public key
-    'amount':     2500,                         # Amount in DZD (Algerian Dinars)
-    'full_name':  'Ahmed Benali',               # Customer's full name
-    'phone':      '0661234567',                 # Customer's phone number
-    'email':      'ahmed@example.com',           # Customer's email
-    'memo':       'Order #789',                 # Internal order reference
-    'return_url': 'https://yoursite.com/callback', # Redirect after payment
-    'redirect':   'no'                          # 'yes' for auto-redirect
+    'account':     'YOUR_STELLAR_PUBLIC_KEY',       # Your merchant Stellar public key
+    'amount':      2500,                            # Amount in DZD (Algerian Dinars)
+    'full_name':   'Ahmed Benali',                  # Customer's full name
+    'phone':       '0661234567',                    # Customer's phone number
+    'email':       'ahmed@example.com',              # Customer's email
+    'memo':        'Order #789',                    # Internal order reference
+    'return_url':  'https://yoursite.com/callback', # Redirect after payment
+    'webhook_url': 'https://yoursite.com/api/cib-webhook', # Asynchronous Webhook callback
+    'language':    'ar',                            # 'ar', 'fr', or 'en'
+    'redirect':    'no'                             # 'yes' for auto-redirect
 })
 
 if result.get('success'):
-    # Get total generated hosted payment URL
-    payment_url = result['data']['payment_url']
+    # Top-level direct properties
+    payment_url = result['payment_url']
+    order_id = result['cib_transaction_id']
     print(f"Redirect customer to: {payment_url}")
 ```
 
-### 🧪 Sandbox Environment
+---
 
-For safe testing without real money, use the dedicated sandbox methods. These methods always point to the SofizPay Sandbox environment.
+## 🧪 Sandbox Environment & Mock Cards
+
+The SofizPay Sandbox simulates the SATIM CIB/EDAHABIA payment system without connecting to real bank accounts.
 
 ```python
-# 1. Generate a sandbox payment link
-result = await client.make_sandbox_cib_transaction({
-    'account':   'YOUR_PUBLIC_KEY',
-    'amount':    150.0,
-    'full_name': 'Sandbox Tester',
-    'phone':     '0555000000',
-    'email':     'sandbox@example.com'
+# Initialize client in Sandbox mode (or pass 'is_sandbox': True)
+sandbox_client = SofizPayClient(sandbox=True)
+
+result = await sandbox_client.make_sandbox_cib_transaction({
+    'account':     'YOUR_PUBLIC_KEY',
+    'amount':      150.0,
+    'full_name':   'Sandbox Tester',
+    'phone':       '0555000000',
+    'email':       'sandbox@example.com',
+    'webhook_url': 'https://yoursite.com/api/cib-webhook',
+    'return_url':  'https://yoursite.com/callback'
 })
 
 if result.get('success'):
-    print(f"Sandbox URL: {result['data']['payment_url']}")
-    cib_id = result['data']['cib_transaction_id']
+    print(f"Sandbox Payment URL: {result['payment_url']}")
+    cib_id = result['cib_transaction_id']
 
-    # 2. Check sandbox status
-    status = await client.check_sandbox_cib_status(cib_id)
-    print(f"Sandbox Status: {status['data']['status']}")
+    # Check sandbox order status
+    status = await sandbox_client.check_sandbox_cib_status(cib_id)
+    print("Order Status:", status.get('data'))
 ```
 
-### Check CIB Status (Production)
+### Sandbox Test Cards
+
+Use the following test credentials on the sandbox payment page:
+
+| Card Number | Expiry | CVV | Cardholder Name | Result | Note |
+|-------------|--------|-----|-----------------|--------|------|
+| `6280581001234567` | `12/28` | `123` | `TEST SUCCESS` | ✅ Approved | Use OTP `123456` |
+| `6280581009876543` | `12/29` | `456` | `TEST SUCCESS TWO` | ✅ Approved | Use OTP `123456` |
+| `6280581005555555` | `06/28` | `999` | `TEST DECLINED` | ❌ Declined by issuer | Tests card refusal |
+| `6280581004444444` | `09/28` | `444` | `TEST INSUFFICIENT` | ❌ Insufficient funds | Tests insufficient balance |
+| `6280581003333333` | `03/21` | `333` | `TEST EXPIRED` | ❌ Expired card | Tests expired card |
+| `6280581002222222` | `11/28` | `222` | `TEST TIMEOUT` | ❌ Timeout | Tests transaction timeout |
+
+> [!TIP]
+> **OTP Code:** Always enter `123456` on the OTP page for approved tests. Entering any other OTP triggers an `Invalid OTP` error.
+
+---
+
+## 🔔 Webhooks & Signature Verification
+
+When a payment succeeds or fails, SofizPay delivers a server-to-server asynchronous HTTP `POST` event notification (`cib.payment.updated`) to your registered `webhook_url`.
+
+### Webhook Event Payload
+
+```json
+{
+  "event": "cib.payment.updated",
+  "payment_status": "success",
+  "transaction_id": "bb979126-4e55-49dd-8ecc-a1d59867d2b0",
+  "cib_transaction_id": "5965287001",
+  "order_number": 5965287001,
+  "order_status": 2,
+  "amount": 150000,
+  "currency": "012",
+  "resp_code": "00",
+  "resp_code_desc": "Approved",
+  "message": "https://yoursite.com/api/cib-webhook/success1500005965287001",
+  "signature": "MEQCIFz8v982hfkjdsf983274hfkjsdf...=="
+}
+```
+
+### Verifying Signatures (`verify_webhook_signature`)
+
+Always verify the RSA SHA-256 signature before processing payments in your database:
 
 ```python
-# Monitor progress of a real CIB transaction using its ID
-status = await client.check_cib_status('CIB_TRANSACTION_ID')
-if status['success']:
-    # Current transaction status (e.g., 'success', 'pending', 'failed')
-    print(f"Status: {status['data']['status']}")
+from fastapi import FastAPI, Request, HTTPException
+from sofizpay.client import SofizPayClient
+
+app = FastAPI()
+client = SofizPayClient()
+
+@app.post("/api/cib-webhook")
+async def handle_cib_webhook(request: Request):
+    payload = await request.json()
+
+    # 1. Validate official digital signature
+    if not client.verify_webhook_signature(payload):
+        raise HTTPException(status_code=400, detail="Invalid digital signature")
+
+    # 2. Process order upon confirmation
+    if payload.get("payment_status") == "success":
+        order_number = payload.get("order_number") or payload.get("cib_transaction_id")
+        amount_in_dzd = (payload.get("amount") or 0) / 100
+        
+        # ✅ Mark order as PAID in your database:
+        # await db.orders.update({"order_id": order_number}, {"status": "PAID", "amount": amount_in_dzd})
+        print(f"Payment approved for order {order_number} ({amount_in_dzd} DZD)")
+
+    return {"status": "OK"}
 ```
 
-### 💡 Best Practice: Secure Order Flow
+---
 
-For maximum security, never expose the `cib_transaction_id` (order_number) to the end-user. Always store it in your database and verify the status server-side.
+## 🔄 Return URL vs. Webhook Notifications
 
-```python
-# 1. Initiate transaction and store the ID invisibly
-result = await client.make_cib_transaction({
-    'account': 'YOUR_PUBLIC_KEY',
-    'amount': 5000,
-    'memo': 'Order #9988'
-})
-
-if result['success']:
-    cib_id = result['data']['cib_transaction_id']
-    # ✅ SAVE to database: UPDATE orders SET cib_id = '{cib_id}' WHERE id = 9988;
-    
-    # Send user to payment_url
-    print(f"Redirecting user to {result['data']['payment_url']}")
-
-# 2. Later, when checking status, fetch from database
-order = await db.fetch_one("SELECT * FROM orders WHERE id=9988")
-status = await client.check_cib_status(order['cib_id'])
-
-if status['success'] and status['data']['status'] == 'success':
-    # ✅ Update order to PAID state in your database
-    await db.execute("UPDATE orders SET status='paid' WHERE id=9988")
-```
+| Feature | Return URL (`return_url`) | Webhook (`webhook_url`) |
+| :--- | :--- | :--- |
+| **Trigger mechanism** | Client browser redirect | Server-to-server direct HTTP POST |
+| **Reliability** | Can fail if user closes browser / network drops | Guaranteed server delivery |
+| **Security** | Susceptible to tampering | Cryptographically signed (RSA-2048) |
+| **Recommended use** | Display "Thank you" screen | Update database, activate subscriptions |
 
 ---
 

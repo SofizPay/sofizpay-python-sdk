@@ -23,7 +23,7 @@ class SofizPayClient:
     CIB transactions, and signature verification.
     """
     
-    VERSION = "1.0.2"
+    VERSION = "1.1.11"
     
     SOFIZPAY_PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1N+bDPxpqeB9QB0affr/
@@ -35,14 +35,26 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
 9wIDAQAB
 -----END PUBLIC KEY-----"""
     
-    def __init__(self, server_url: str = "https://horizon.stellar.org", sandbox: bool = False):
+    def __init__(
+        self,
+        server_url: str = "https://horizon.stellar.org",
+        sandbox: bool = False,
+        network: Optional[str] = None,
+        **kwargs: Any
+    ):
         """
         Initialize SofizPay client
         
         Args:
             server_url: Stellar Horizon server URL (defaults to mainnet)
             sandbox: Enable sandbox mode for CIB transactions (defaults to False)
+            network: Network name ('TESTNET' or 'PUBLIC')
         """
+        if network:
+            if network.upper() == "TESTNET":
+                sandbox = True
+                if server_url == "https://horizon.stellar.org":
+                    server_url = "https://horizon-testnet.stellar.org"
         self.server_url = server_url
         self.sandbox = sandbox
         self.payment_manager = PaymentManager(server_url)
@@ -79,8 +91,8 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
                 # Align return structure with JS SDK
                 return {
                     'success': True,
-                    'transactionId': result.get('hash'),
-                    'transactionHash': result.get('hash'),
+                    'transactionId': result.get('transaction_id') or result.get('transaction_hash') or result.get('hash'),
+                    'transactionHash': result.get('transaction_hash') or result.get('transaction_id') or result.get('hash'),
                     'amount': float(amount),
                     'memo': memo,
                     'destinationPublicKey': destination_public_key,
@@ -205,6 +217,14 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
         """
         return self.payment_manager.get_public_key_from_secret(secret_key)
     
+    def get_public_key(self, secret_key: str) -> str:
+        """Alias for get_public_key_from_secret for JS SDK parity"""
+        return self.get_public_key_from_secret(secret_key)
+    
+    def get_version(self) -> str:
+        """Get SDK version"""
+        return self.VERSION
+    
     async def get_transactions(
         self,
         public_key: str,
@@ -237,6 +257,11 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
                 'transactions': [],
                 'timestamp': datetime.now().isoformat()
             }
+    
+    async def get_all_transactions(self, public_key: str, limit: int = 200) -> Dict[str, Any]:
+        """Alias for get_transactions to match documentation"""
+        return await self.get_transactions(public_key, limit)
+
     
     async def get_transaction_by_hash(self, transaction_hash: str) -> Dict[str, Any]:
         """
@@ -304,6 +329,9 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
             public_key, transaction_callback, from_now=from_now, check_interval=check_interval  
         )
     
+    # Unified alias
+    start_transaction_stream = setup_transaction_stream
+    
     def stop_transaction_stream(self, stream_id: str) -> bool:
         """
         Stop a transaction stream
@@ -324,34 +352,42 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
         return self.transaction_manager.stop_transaction_stream(stream_id)
     
     @classmethod
-    def verify_signature(cls, message: str, signature: str) -> bool:
+    def verify_signature(cls, verification_data: Any, signature: Optional[str] = None) -> bool:
         """
-        Verify a signature against a message using SofizPay's official public key
+        Verify digital RSA signature of a callback / webhook notification using SofizPay's official public key
         
         Args:
-            message: The original message
-            signature: The signature to verify
+            verification_data: Payload dictionary or message string
+            signature: Signature string if verification_data is message
             
         Returns:
             True if signature is valid, False otherwise
-            
-        Example:
-            ```python
-            client = SofizPayClient()
-            is_valid = client.verify_signature(
-                message="Hello, world!",
-                signature="SIGNATURE_HERE"
-            )
-            ```
         """
+        message = ""
+        sig = ""
+
+        if isinstance(verification_data, str):
+            message = verification_data
+            sig = signature or ""
+        elif isinstance(verification_data, dict):
+            message = verification_data.get('message', '')
+            sig = verification_data.get('signature_url_safe') or verification_data.get('signature', '')
+
+        if not message or not sig:
+            return False
+
         try:
-            decoded_signature = base64.b64decode(signature)
+            base64_sig = str(sig).replace('-', '+').replace('_', '/')
+            while len(base64_sig) % 4 != 0:
+                base64_sig += '='
+            
+            signature_bytes = base64.b64decode(base64_sig)
             
             public_key_obj = serialization.load_pem_public_key(cls.SOFIZPAY_PUBLIC_KEY_PEM.encode())
             
             public_key_obj.verify(
-                decoded_signature,
-                message.encode(),
+                signature_bytes,
+                message.encode('utf-8'),
                 padding.PKCS1v15(),
                 hashes.SHA256()
             )
@@ -360,8 +396,21 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
             return False
     
     async def make_cib_transaction(self, transaction_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Initiate a CIB transaction (Production only)"""
-        return await self._make_cib_request(transaction_data, False)
+        """
+        Initiate a CIB / EDAHABIA payment gateway transaction
+        
+        Args:
+            transaction_data: Dictionary of transaction parameters (account, amount, full_name, etc.)
+            
+        Returns:
+            Dictionary with payment_url, cib_transaction_id, and transaction details
+        """
+        is_sandbox = (
+            transaction_data.get('is_sandbox') if transaction_data.get('is_sandbox') is not None
+            else transaction_data.get('isSandbox') if transaction_data.get('isSandbox') is not None
+            else self.sandbox
+        )
+        return await self._make_cib_request(transaction_data, bool(is_sandbox))
 
     async def make_sandbox_cib_transaction(self, transaction_data: Dict[str, Any]) -> Dict[str, Any]:
         """Initiate a CIB transaction specifically in Sandbox mode"""
@@ -393,22 +442,39 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
             query_params = []
             query_params.append(f"account={urllib.parse.quote(str(transaction_data['account']))}")
             query_params.append(f"amount={transaction_data['amount']}")
-            query_params.append(f"full_name={urllib.parse.quote(transaction_data['full_name'])}")
-            query_params.append(f"phone={urllib.parse.quote(transaction_data['phone'])}")
-            query_params.append(f"email={urllib.parse.quote(transaction_data['email'])}")
+            query_params.append(f"full_name={urllib.parse.quote(str(transaction_data['full_name']))}")
+            query_params.append(f"phone={urllib.parse.quote(str(transaction_data['phone']))}")
+            query_params.append(f"email={urllib.parse.quote(str(transaction_data['email']))}")
             
             # Add optional parameters
             if transaction_data.get('return_url'):
-                query_params.append(f"return_url={urllib.parse.quote(transaction_data['return_url'])}")
+                query_params.append(f"return_url={urllib.parse.quote(str(transaction_data['return_url']))}")
+            
+            if transaction_data.get('webhook_url'):
+                query_params.append(f"webhook_url={urllib.parse.quote(str(transaction_data['webhook_url']))}")
+            
+            if transaction_data.get('invoice_id'):
+                query_params.append(f"invoice_id={urllib.parse.quote(str(transaction_data['invoice_id']))}")
+            
+            if transaction_data.get('language'):
+                query_params.append(f"language={urllib.parse.quote(str(transaction_data['language']))}")
             
             if transaction_data.get('memo'):
-                safe_memo = urllib.parse.quote(transaction_data['memo'])
+                safe_memo = urllib.parse.quote(str(transaction_data['memo']))
                 query_params.append(f"memo={safe_memo}")
             
-            query_params.append("redirect=no")
+            redirect_val = transaction_data.get('redirect', 'no')
+            if isinstance(redirect_val, bool):
+                redirect_val = 'yes' if redirect_val else 'no'
+            query_params.append(f"redirect={urllib.parse.quote(str(redirect_val))}")
+            
+            if transaction_data.get('keep_return_url') is not None:
+                k_val = transaction_data['keep_return_url']
+                if isinstance(k_val, bool):
+                    k_val = 'True' if k_val else 'False'
+                query_params.append(f"keep_return_url={urllib.parse.quote(str(k_val))}")
             
             full_url = f"{base_url}?{'&'.join(query_params)}"
-            
             
             response = requests.get(
                 full_url,
@@ -422,23 +488,40 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
             
             response.raise_for_status()
             
+            resp_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+            payment_url = None
+            cib_tx_id = None
+            tx_id = None
+            order_id = None
+            webhook_url = transaction_data.get('webhook_url')
+            
+            if isinstance(resp_data, dict):
+                payment_url = resp_data.get('payment_url') or (resp_data.get('cib_response') or {}).get('formUrl')
+                cib_tx_id = resp_data.get('cib_transaction_id')
+                tx_id = resp_data.get('transaction_id')
+                order_id = resp_data.get('order_id')
+                if resp_data.get('webhook_url'):
+                    webhook_url = resp_data.get('webhook_url')
+                is_success = resp_data.get('status') != 'error' and resp_data.get('success') is not False
+            else:
+                is_success = response.status_code == 200
+
             return {
-                'success': True,
-                'data': response.json() if response.headers.get('content-type', '').startswith('application/json') else response.text,
+                'success': is_success,
+                'data': resp_data if resp_data else response.text,
+                'payment_url': payment_url,
+                'cib_transaction_id': cib_tx_id,
+                'transaction_id': tx_id,
+                'order_id': order_id,
+                'webhook_url': webhook_url,
+                'account': transaction_data['account'],
+                'amount': transaction_data['amount'],
+                'full_name': transaction_data['full_name'],
+                'phone': transaction_data['phone'],
+                'email': transaction_data['email'],
+                'memo': transaction_data.get('memo'),
+                'is_sandbox': use_sandbox,
                 'status': response.status_code,
-                'status_text': response.reason,
-                'headers': dict(response.headers),
-                'url': full_url,
-                'request_data': {
-                    'account': transaction_data['account'],
-                    'amount': transaction_data['amount'],
-                    'full_name': transaction_data['full_name'],
-                    'phone': transaction_data['phone'],
-                    'email': transaction_data['email'],
-                    'return_url': transaction_data.get('return_url'),
-                    'memo': transaction_data.get('memo'),
-                    'redirect': 'no'
-                },
                 'timestamp': datetime.now().isoformat()
             }
             
@@ -486,53 +569,21 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
                 'timestamp': datetime.now().isoformat()
             }
     
-    def verify_sofizpay_signature(self, verification_data: Dict[str, str]) -> bool:
+    def verify_webhook_signature(self, webhook_payload: Dict[str, Any]) -> bool:
         """
-        Verify a signature from SofizPay using the official public key
+        Helper method specifically to verify incoming webhook payloads
         
         Args:
-            verification_data: Dictionary containing:
-                - message (str): The original message that was signed
-                - signature_url_safe (str): The URL-safe base64 encoded signature
-                
+            webhook_payload: Webhook payload dictionary containing message and signature
+            
         Returns:
-            True if signature is valid, False otherwise
-            
-
-            ```
+            True if signature is valid
         """
-        if not verification_data.get('message'):
-            return False
-        
-        if not verification_data.get('signature_url_safe'):
-            return False
-        
-        try:
-            signature_url_safe = verification_data['signature_url_safe']
-            base64_signature = signature_url_safe.replace('-', '+').replace('_', '/')
-            
-            while len(base64_signature) % 4:
-                base64_signature += '='
-            
-            signature_bytes = base64.b64decode(base64_signature)
-            
-            public_key = serialization.load_pem_public_key(
-                self.SOFIZPAY_PUBLIC_KEY_PEM.encode()
-            )
-            
-            public_key.verify(
-                signature_bytes,
-                verification_data['message'].encode('utf-8'),
-                padding.PKCS1v15(),
-                hashes.SHA256()
-            )
-            
-            return True
-            
-        except InvalidSignature:
-            return False
-        except Exception as e:
-            return False
+        return self.verify_signature(webhook_payload)
+    
+    def verify_sofizpay_signature(self, verification_data: Dict[str, str]) -> bool:
+        """Backward-compatible alias for signature verification"""
+        return self.verify_signature(verification_data)
 
     async def recharge_phone(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -639,9 +690,16 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
         except Exception as e:
             return {'success': False, 'error': str(e), 'timestamp': datetime.now().isoformat()}
 
-    async def check_cib_status(self, cib_transaction_id: str) -> Dict[str, Any]:
-        """Check status of a CIB transaction (Production only)"""
-        return await self._check_cib_status_request(cib_transaction_id, False)
+    async def check_cib_status(self, cib_transaction_id: str, is_sandbox: Optional[bool] = None) -> Dict[str, Any]:
+        """
+        Check status of a CIB transaction (Production or Sandbox)
+        
+        Args:
+            cib_transaction_id: The CIB transaction order ID
+            is_sandbox: Explicitly override sandbox mode (defaults to client instance setting)
+        """
+        use_sandbox = is_sandbox if is_sandbox is not None else self.sandbox
+        return await self._check_cib_status_request(cib_transaction_id, use_sandbox)
 
     async def check_sandbox_cib_status(self, cib_transaction_id: str) -> Dict[str, Any]:
         """Check status of a CIB transaction specifically in Sandbox mode"""

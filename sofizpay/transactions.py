@@ -368,14 +368,20 @@ class TransactionManager:
             raise TransactionError("Transaction hash is required")
         try:
             transaction_data = self.server.transactions().transaction(transaction_hash).call()
-            return transaction_data  # إرجاع بيانات المعاملة مباشرة
+            return {
+                'success': True,
+                'found': True,
+                'transaction': transaction_data,
+                'hash': transaction_hash,
+                'message': 'Transaction found'
+            }
         except SdkError as e:
             if "404" in str(e):
-                return {}
+                return {'success': True, 'found': False, 'transaction': None, 'hash': transaction_hash, 'message': 'Transaction not found'}
             else:
                 raise TransactionError(f"Error fetching transaction: {e}")
         except Exception as e:
-            return {}
+            return {'success': False, 'found': False, 'error': str(e), 'hash': transaction_hash}
     
     def __del__(self):
         """Cleanup streaming tasks when object is destroyed"""
