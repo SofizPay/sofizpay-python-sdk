@@ -7,14 +7,14 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="sofizpay-sdk",
-    version = "1.0.2",
+    name="sofizpay-sdk-python",
+    version = "1.1.0",
     author="SofizPay Team",
     author_email="support@sofizpay.com",
     description="Professional Python SDK for SofizPay payments using Stellar blockchain",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/kenandarabeh/sofizpay-sdk-python",
+    url="https://github.com/SofizPay/sofizpay-python-sdk",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 5 - Production/Stable",
@@ -36,9 +36,9 @@ setup(
     install_requires=requirements,
     keywords="stellar, payment, blockchain, cryptocurrency, DZT, sofizpay, fintech, stellar-network",
     project_urls={
-        "Bug Reports": "https://github.com/kenandarabeh/sofizpay-sdk-python/issues",
-        "Source": "https://github.com/kenandarabeh/sofizpay-sdk-python",
-        "Documentation": "https://github.com/kenandarabeh/sofizpay-sdk-python#readme",
+        "Bug Reports": "https://github.com/SofizPay/sofizpay-python-sdk/issues",
+        "Source": "https://github.com/SofizPay/sofizpay-python-sdk",
+        "Documentation": "https://github.com/SofizPay/sofizpay-python-sdk#readme",
         "Homepage": "https://sofizpay.com",
     },
     include_package_data=True,

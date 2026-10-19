@@ -16,7 +16,7 @@ from .exceptions import (
     ValidationError
 )
 
-__version__ = "1.1.11"
+__version__ = "1.1.0"
 __author__ = "SofizPay Team"
 __email__ = "support@sofizpay.com"
 
