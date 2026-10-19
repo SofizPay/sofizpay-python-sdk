@@ -7,7 +7,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="sofizpay-sdk-python",
+    name="sofizpay-python-sdk",
     version = "1.1.0",
     author="SofizPay Team",
     author_email="support@sofizpay.com",

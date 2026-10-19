@@ -4,7 +4,7 @@
   <h2>SofizPay Python SDK</h2>
   <p><strong>The official Python SDK for secure digital payments on the SofizPay platform.</strong></p>
 
-  [![PyPI version](https://badge.fury.io/py/sofizpay-sdk-python.svg)](https://pypi.org/project/sofizpay-sdk-python/)
+  [![PyPI version](https://badge.fury.io/py/sofizpay-python-sdk.svg)](https://pypi.org/project/sofizpay-python-sdk/)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 </div>
@@ -44,7 +44,7 @@ The SofizPay Python SDK provides a complete `async` interface for integrating **
 ### pip
 
 ```bash
-pip install sofizpay-sdk-python
+pip install sofizpay-python-sdk
 ```
 
 **Requirements:** 
@@ -462,7 +462,7 @@ All async methods return a dictionary with a `success` flag:
 
 - 🌐 **Website**: [SofizPay.com](https://sofizpay.com)
 - 📚 **Full Docs**: [docs.sofizpay.com](https://docs.sofizpay.com)
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/kenandarabeh/sofizpay-sdk-python/issues)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/kenandarabeh/sofizpay-python-sdk/issues)
 
 ---
 
