@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="sofizpay-python-sdk",
-    version = "1.1.0",
+    version = "1.2.0",
     author="SofizPay Team",
     author_email="support@sofizpay.com",
     description="Professional Python SDK for SofizPay payments using Stellar blockchain",

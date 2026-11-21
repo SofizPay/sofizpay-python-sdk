@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sofizpay-python-sdk"
-version = "1.1.0"
+version = "1.2.0"
 description = "Professional Python SDK for SofizPay payments using Stellar blockchain"
 readme = "README.md"
 requires-python = ">=3.8"

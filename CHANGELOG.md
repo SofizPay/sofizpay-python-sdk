@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.0] - 2026-11-21
+
+### Added
+- `SofizPayClient.verify_webhook_payload(payload, callback_url=None)` and module-level
+  `sofizpay.verify_webhook_payload`: verify the CIB webhook signature **and** that `payment_status`,
+  `amount` and `order_number` match the signed `message`. Use it before trusting those fields.
+
+### Fixed
+- `verify_signature` / `verify_webhook_signature` return `False` instead of raising when `message`
+  or `signature` is not a string.
+
 ## [1.0.2] - 2025-08-01
 sd
 

@@ -358,9 +358,19 @@ When a payment succeeds or fails, SofizPay delivers a server-to-server asynchron
 }
 ```
 
-### Verifying Signatures (`verify_webhook_signature`)
+### Verifying Webhooks (`verify_webhook_payload`)
 
-Always verify the RSA SHA-256 signature before processing payments in your database:
+Always verify the webhook before processing payments in your database.
+
+> ⚠️ **Use `verify_webhook_payload`, not only `verify_webhook_signature`.** The RSA signature covers only the
+> `message` string (`callback_url + payment_status + amount + order_number`). The top-level fields such as
+> `payment_status`, `amount` and `order_number` are **not** signed by themselves. `verify_webhook_payload`
+> checks the signature **and** that those fields match the signed `message`, so they can be trusted.
+
+Recommended hardening:
+- Pass `callback_url`, the URL prefix exactly as it appears at the start of `message` in a real webhook (including any trailing `/`), for an exact match.
+- Check that `amount` equals the amount you stored for that order.
+- Process each order only once (webhooks can be replayed).
 
 ```python
 from fastapi import FastAPI, Request, HTTPException
@@ -373,14 +383,16 @@ client = SofizPayClient()
 async def handle_cib_webhook(request: Request):
     payload = await request.json()
 
-    # 1. Validate official digital signature
-    if not client.verify_webhook_signature(payload):
-        raise HTTPException(status_code=400, detail="Invalid digital signature")
+    # 1. Validate signature AND that payment_status / amount / order_number match the signed message
+    callback_url = "https://yourstore.com/api/cib-webhook/"  # optional, recommended
+    if not client.verify_webhook_payload(payload, callback_url):
+        raise HTTPException(status_code=400, detail="Invalid webhook")
 
-    # 2. Process order upon confirmation
-    if payload.get("payment_status") == "success":
-        order_number = payload.get("order_number") or payload.get("cib_transaction_id")
-        amount_in_dzd = (payload.get("amount") or 0) / 100
+    # 2. Process order upon confirmation (only the signed fields are used)
+    if payload["payment_status"] == "success":
+        order_number = payload["order_number"]
+        amount_in_dzd = int(payload["amount"]) / 100
+        # ✅ Also check payload["amount"] equals the amount stored for this order, and process each order once
         
         # ✅ Mark order as PAID in your database:
         # await db.orders.update({"order_id": order_number}, {"status": "PAID", "amount": amount_in_dzd})
@@ -470,5 +482,5 @@ All async methods return a dictionary with a `success` flag:
 
 MIT © [SofizPay Team](https://github.com/kenandarabeh)
 
-**Built with ❤️ for Python developers | Version `1.1.0`**
+**Built with ❤️ for Python developers | Version `1.2.0`**
 

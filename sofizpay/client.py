@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable
 import requests
 import base64
+import hmac
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.exceptions import InvalidSignature
@@ -373,7 +374,8 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
             message = verification_data.get('message', '')
             sig = verification_data.get('signature_url_safe') or verification_data.get('signature', '')
 
-        if not message or not sig:
+        # Webhook JSON may carry any type here (dict, int, None...); only non-empty strings are valid
+        if not isinstance(message, str) or not isinstance(sig, str) or not message or not sig:
             return False
 
         try:
@@ -580,7 +582,45 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
             True if signature is valid
         """
         return self.verify_signature(webhook_payload)
-    
+
+    def verify_webhook_payload(self, webhook_payload: Dict[str, Any], callback_url: Optional[str] = None) -> bool:
+        """
+        Verify a CIB webhook end to end: the RSA signature over ``message`` AND that the
+        unsigned top-level fields (``payment_status``, ``amount``, ``order_number``) match
+        the signed message. Use this before trusting any of those fields.
+
+        The signed message is ``callback_url + payment_status + amount + order_number``.
+
+        Args:
+            webhook_payload: Parsed webhook JSON body
+            callback_url: Your webhook URL as registered with SofizPay; when given,
+                the message must match it exactly
+
+        Returns:
+            True only if the signature is valid and the fields are consistent
+        """
+        if not isinstance(webhook_payload, dict) or not self.verify_webhook_signature(webhook_payload):
+            return False
+
+        def to_part(value: Any) -> Optional[str]:
+            if isinstance(value, str):
+                return value
+            if isinstance(value, int) and not isinstance(value, bool):
+                return str(value)
+            return None
+
+        status = to_part(webhook_payload.get('payment_status'))
+        amount = to_part(webhook_payload.get('amount'))
+        order_number = to_part(webhook_payload.get('order_number'))
+        if not status or not amount or not order_number:
+            return False
+
+        signed_fields = status + amount + order_number
+        message = webhook_payload['message']
+        if callback_url:
+            return hmac.compare_digest((callback_url + signed_fields).encode('utf-8'), message.encode('utf-8'))
+        return len(message) > len(signed_fields) and message.endswith(signed_fields)
+
     def verify_sofizpay_signature(self, verification_data: Dict[str, str]) -> bool:
         """Backward-compatible alias for signature verification"""
         return self.verify_signature(verification_data)

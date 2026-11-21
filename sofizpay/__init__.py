@@ -16,7 +16,7 @@ from .exceptions import (
     ValidationError
 )
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "SofizPay Team"
 __email__ = "support@sofizpay.com"
 
@@ -38,6 +38,7 @@ __all__ = [
     "make_sandbox_cib_transaction",
     "verify_signature",
     "verify_webhook_signature",
+    "verify_webhook_payload",
     "verify_sofizpay_signature"
 ]
 
@@ -60,6 +61,11 @@ def verify_webhook_signature(webhook_payload):
     """Convenience function to verify SofizPay webhook signature"""
     client = SofizPayClient()
     return client.verify_webhook_signature(webhook_payload)
+
+def verify_webhook_payload(webhook_payload, callback_url=None):
+    """Convenience function: verify webhook signature AND that its fields match the signed message"""
+    client = SofizPayClient()
+    return client.verify_webhook_payload(webhook_payload, callback_url)
 
 def verify_sofizpay_signature(verification_data):
     """Convenience function to verify SofizPay signature (backward-compatible)"""
