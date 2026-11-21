@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.1] - 2026-11-21
+
+### Fixed
+- `verify_webhook_payload` now checks the exact signed format `"cib" + payment_status + amount + order_number`
+  (confirmed with real sandbox and production webhooks). `callback_url` is deprecated and ignored: the callback
+  URL is not part of the signed message, so passing it in 1.2.0 rejected genuine webhooks.
+
+### Docs
+- README: real `message` example and no `callback_url` recommendation.
+
 ## [1.2.0] - 2026-11-21
 
 ### Added

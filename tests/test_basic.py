@@ -7,4 +7,4 @@ def test_import():
 
 def test_version():
     assert hasattr(sofizpay, "__version__")
-    assert sofizpay.__version__ == "1.2.0"
+    assert sofizpay.__version__ == "1.2.1"

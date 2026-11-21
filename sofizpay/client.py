@@ -589,16 +589,18 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
         unsigned top-level fields (``payment_status``, ``amount``, ``order_number``) match
         the signed message. Use this before trusting any of those fields.
 
-        The signed message is ``callback_url + payment_status + amount + order_number``.
+        The signed message is exactly ``"cib" + payment_status + amount + order_number``
+        (e.g. ``cibsuccess50004790895316``), verified against real sandbox and production webhooks.
 
         Args:
             webhook_payload: Parsed webhook JSON body
-            callback_url: Your webhook URL as registered with SofizPay; when given,
-                the message must match it exactly
+            callback_url: Deprecated, ignored. The callback URL is not part of the signed
+                message; accepted only so code written for 1.2.0 keeps working.
 
         Returns:
             True only if the signature is valid and the fields are consistent
         """
+        del callback_url  # deprecated, ignored
         if not isinstance(webhook_payload, dict) or not self.verify_webhook_signature(webhook_payload):
             return False
 
@@ -615,11 +617,8 @@ THV3WRcKrP2krz3ruRGF6yP6PVHEuPc0YDLsYjV5uhfs7JtIksNKhRRAQ16bAsj/
         if not status or not amount or not order_number:
             return False
 
-        signed_fields = status + amount + order_number
-        message = webhook_payload['message']
-        if callback_url:
-            return hmac.compare_digest((callback_url + signed_fields).encode('utf-8'), message.encode('utf-8'))
-        return len(message) > len(signed_fields) and message.endswith(signed_fields)
+        expected = 'cib' + status + amount + order_number
+        return hmac.compare_digest(expected.encode('utf-8'), webhook_payload['message'].encode('utf-8'))
 
     def verify_sofizpay_signature(self, verification_data: Dict[str, str]) -> bool:
         """Backward-compatible alias for signature verification"""

@@ -353,7 +353,7 @@ When a payment succeeds or fails, SofizPay delivers a server-to-server asynchron
   "currency": "012",
   "resp_code": "00",
   "resp_code_desc": "Approved",
-  "message": "https://yoursite.com/api/cib-webhook/success1500005965287001",
+  "message": "cibsuccess1500005965287001",
   "signature": "MEQCIFz8v982hfkjdsf983274hfkjsdf...=="
 }
 ```
@@ -363,12 +363,11 @@ When a payment succeeds or fails, SofizPay delivers a server-to-server asynchron
 Always verify the webhook before processing payments in your database.
 
 > ⚠️ **Use `verify_webhook_payload`, not only `verify_webhook_signature`.** The RSA signature covers only the
-> `message` string (`callback_url + payment_status + amount + order_number`). The top-level fields such as
+> `message` string (`"cib" + payment_status + amount + order_number`, e.g. `cibsuccess1500005965287001`). The top-level fields such as
 > `payment_status`, `amount` and `order_number` are **not** signed by themselves. `verify_webhook_payload`
 > checks the signature **and** that those fields match the signed `message`, so they can be trusted.
 
 Recommended hardening:
-- Pass `callback_url`, the URL prefix exactly as it appears at the start of `message` in a real webhook (including any trailing `/`), for an exact match.
 - Check that `amount` equals the amount you stored for that order.
 - Process each order only once (webhooks can be replayed).
 
@@ -384,8 +383,7 @@ async def handle_cib_webhook(request: Request):
     payload = await request.json()
 
     # 1. Validate signature AND that payment_status / amount / order_number match the signed message
-    callback_url = "https://yourstore.com/api/cib-webhook/"  # optional, recommended
-    if not client.verify_webhook_payload(payload, callback_url):
+    if not client.verify_webhook_payload(payload):
         raise HTTPException(status_code=400, detail="Invalid webhook")
 
     # 2. Process order upon confirmation (only the signed fields are used)
@@ -482,5 +480,5 @@ All async methods return a dictionary with a `success` flag:
 
 MIT © [SofizPay Team](https://github.com/kenandarabeh)
 
-**Built with ❤️ for Python developers | Version `1.2.0`**
+**Built with ❤️ for Python developers | Version `1.2.1`**
 
